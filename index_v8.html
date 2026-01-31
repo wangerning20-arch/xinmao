@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>翻开红宝书</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --gold:#C5A059;
+      --paper:#FFF5E0;
+      --bg: url('bg.jpg');
+
+      /* 书覆盖框（可微调） */
+      --book-x: 50%;
+      --book-y: 61%;
+      --book-w: min(460px, 31vw);
+      --book-h: min(720px, 78vh);
+      --book-tilt: 0deg;
+
+      --open-dur: 1360ms;
+      --pages-dur: 1120ms;
+
+    }
+
+    html,body{ margin:0; width:100%; height:100%; overflow:hidden; background:#000; font-family:'Noto Serif SC', serif; }
+    .scene{ position:relative; width:100vw; height:100vh; overflow:hidden; background:#000; }
+
+    .bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; user-select:none; -webkit-user-drag:none; }
+
+    .vignette{
+      position:absolute; inset:0; pointer-events:none; z-index:10;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.55) 72%, rgba(0,0,0,0.82) 100%),
+        linear-gradient(rgba(0,0,0,0.08), rgba(0,0,0,0.28));
+    }
+
+    /* 进入引导：呼吸箭头 + 呼吸文字（可点击） */
+    .guide{
+      position:absolute;
+      left: calc(var(--book-x) - (var(--book-w) * 0.42));
+      top:  calc(var(--book-y) - (var(--book-h) * 0.26));
+      transform: translate(-50%,-50%) rotate(var(--book-tilt));
+      display:flex; align-items:center; gap:12px;
+      padding:10px 14px;
+      border:1px solid rgba(197,160,89,0.45);
+      border-radius:12px;
+      background: rgba(0,0,0,0.28);
+      color: rgba(255,245,224,0.95);
+      text-shadow: 0 2px 16px rgba(0,0,0,0.85);
+      z-index:40;
+      cursor:pointer;
+      user-select:none;
+      -webkit-user-drag:none;
+      backdrop-filter: blur(2px);
+      animation: guideBreath 3s infinite ease-in-out;
+    }
+    .guide:focus{ outline: 2px solid rgba(197,160,89,0.75); outline-offset: 2px; }
+    .guide-arrow{
+      width:28px; height:28px;
+      border-right:4px solid var(--gold);
+      border-bottom:4px solid var(--gold);
+      transform: rotate(-45deg);
+      filter: drop-shadow(0 6px 18px rgba(0,0,0,0.55));
+      animation: arrowPulse 1.6s infinite ease-in-out;
+    }
+    .guide-text{
+      font-size:18px;
+      letter-spacing:2px;
+      font-weight:700;
+      animation: textPulse 3s infinite ease-in-out;
+    }
+    @keyframes guideBreath{
+      0%{opacity:.40; transform:translate(-50%,-50%) rotate(var(--book-tilt)) scale(.99);}
+      50%{opacity:1;   transform:translate(-50%,-50%) rotate(var(--book-tilt)) scale(1);}
+      100%{opacity:.40; transform:translate(-50%,-50%) rotate(var(--book-tilt)) scale(.99);}
+    }
+    @keyframes arrowPulse{ 0%,100%{transform:rotate(-45deg) scale(.98);} 50%{transform:rotate(-45deg) scale(1.06);} }
+    @keyframes textPulse{ 0%,100%{opacity:.65;} 50%{opacity:1;} }
+
+
+    .book-hit{
+      position:absolute; left: var(--book-x); top: var(--book-y);
+      width: var(--book-w); height: var(--book-h);
+      transform: translate(-50%,-50%) rotate(var(--book-tilt));
+      border:none; background:transparent; z-index:30; cursor:pointer;
+    }
+
+    /* 纸页层 */
+    .pages{
+      position:absolute; left: var(--book-x); top: var(--book-y);
+      width: var(--book-w); height: var(--book-h);
+      transform: translate(-50%,-50%) rotate(var(--book-tilt));
+      z-index:45;
+      border-radius: 10px; overflow:hidden;
+      opacity:0; pointer-events:none;
+      background: linear-gradient(135deg, rgba(255,248,232,0.92), rgba(250,240,220,0.78));
+      box-shadow: inset 0 0 0 1px rgba(0,0,0,0.10), 0 18px 55px rgba(0,0,0,0.45);
+    }
+    .pages::before{
+      content:""; position:absolute; top:0; right:0; width:18px; height:100%;
+      background:
+        repeating-linear-gradient(0deg, rgba(0,0,0,0.00) 0px, rgba(0,0,0,0.00) 3px, rgba(0,0,0,0.06) 4px),
+        linear-gradient(90deg, rgba(0,0,0,0.00), rgba(0,0,0,0.18));
+      opacity:.75; pointer-events:none;
+    }
+    .pages::after{
+      content:""; position:absolute; top:0; left:0; width:26px; height:100%;
+      background: linear-gradient(90deg, rgba(0,0,0,0.25), rgba(0,0,0,0.00));
+      pointer-events:none;
+    }
+    .page{
+      position:absolute; inset:10px;
+      border-radius:8px;
+      background: linear-gradient(135deg, rgba(255,252,245,0.95), rgba(245,235,215,0.75));
+      box-shadow: 0 8px 18px rgba(0,0,0,0.18);
+      transform-origin: left center;
+      opacity:0;
+      filter: blur(0.1px);
+    }
+    .pages.show{ opacity:1; transition: opacity 120ms ease; }
+    .pages.flip .page{ opacity:1; animation: pageFlip var(--pages-dur) cubic-bezier(0.2,0.7,0.2,1) forwards; }
+    .pages.flip .page:nth-child(1){ animation-delay:0ms;   --a:-12deg; }
+    .pages.flip .page:nth-child(2){ animation-delay:60ms;  --a:-18deg; }
+    .pages.flip .page:nth-child(3){ animation-delay:110ms; --a:-26deg; }
+    .pages.flip .page:nth-child(4){ animation-delay:160ms; --a:-34deg; }
+    .pages.flip .page:nth-child(5){ animation-delay:210ms; --a:-42deg; }
+    .pages.flip .page:nth-child(6){ animation-delay:260ms; --a:-50deg; }
+    .pages.flip .page:nth-child(7){ animation-delay:320ms; --a:-58deg; }
+    .pages.flip .page:nth-child(8){ animation-delay:380ms; --a:-66deg; }
+    @keyframes pageFlip{
+      0%   { transform: perspective(900px) rotateY(0deg) translateX(0); opacity:0.0; }
+      20%  { opacity:0.85; }
+      70%  { transform: perspective(900px) rotateY(var(--a)) translateX(2px); opacity:0.85; }
+      100% { transform: perspective(900px) rotateY(-2deg) translateX(0); opacity:0.0; }
+    }
+
+    /* 封面：双面 */
+    .cover{
+      position:absolute; left: var(--book-x); top: var(--book-y);
+      width: var(--book-w); height: var(--book-h);
+      transform: translate(-50%,-50%) rotate(var(--book-tilt));
+      transform-style: preserve-3d;
+      transform-origin: left center;
+      z-index:55; pointer-events:none;
+      opacity:0;
+    }
+    .face{
+      position:absolute; inset:0;
+      border-radius:10px; overflow:hidden;
+      backface-visibility:hidden;
+      box-shadow: 0 18px 55px rgba(0,0,0,0.55);
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+    .cover-front{ background-repeat:no-repeat; }
+    .cover-front::after{
+      content:""; position:absolute; inset:-20%;
+      background: linear-gradient(120deg, rgba(255,255,255,0.00) 28%, rgba(255,255,255,0.20) 45%, rgba(255,255,255,0.00) 62%);
+      transform: translateX(-35%); opacity:.65; pointer-events:none;
+    }
+    .cover-back {
+      transform: rotateY(180deg);
+      z-index: 2;
+
+      /* 核心修改：使用你上传的皮革纹理图 */
+      /* 注意：确保文件名与你上传到 GitHub 的完全一致，比如 image_b1a877.jpg */
+      background-image: url('image_b1a877.jpg');
+      background-size: cover;
+      background-position: center;
+
+      /* 兜底深红色，确保在图片加载前也是不透明的 */
+      background-color: #8b0000;
+
+      /* 书脊阴影：增强翻折处的立体感 */
+      box-shadow:
+        inset 28px 0 40px rgba(0,0,0,0.6),   /* 左侧书脊深影 */
+        inset 0 0 0 1px rgba(255,255,255,0.05);
+
+      /* 彻底阻断封面重影 */
+      opacity: 1 !important;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+    }
+
+    .cover.play{ opacity:1; animation: openCover var(--open-dur) cubic-bezier(0.2,0.65,0.2,1) forwards; }
+    @keyframes openCover{
+      0%{ transform: translate(-50%,-50%) rotate(var(--book-tilt)) perspective(1200px) rotateY(0deg); }
+      55%{ filter: drop-shadow(22px 18px 18px rgba(0,0,0,0.35)); }
+      100%{ transform: translate(-50%,-50%) rotate(var(--book-tilt)) perspective(1200px) rotateY(-125deg);
+            filter: drop-shadow(30px 14px 18px rgba(0,0,0,0.28)); }
+    }
+
+    /* 翻开后白光 */
+    .white-flash{
+      position:absolute; left: var(--book-x); top: var(--book-y);
+      width: var(--book-w); height: var(--book-h);
+      transform: translate(-50%,-50%) rotate(var(--book-tilt));
+      z-index:70; pointer-events:none;
+      opacity:0; border-radius:12px;
+      background: radial-gradient(circle at 50% 45%, rgba(255,255,255,0.92) 0%, rgba(255,255,255,0.55) 35%, rgba(255,255,255,0.00) 70%);
+      filter: blur(0.2px);
+    }
+    .white-flash.play{ animation: whiteFlash 420ms ease-out forwards; }
+    @keyframes whiteFlash{ 0%{opacity:0;} 25%{opacity:1;} 100%{opacity:0;} }
+
+    /* 摘录卡 */
+    .quote-card{
+      /* 主题文字框：保持原宽度，但整体更靠左给右侧毛泽东留白 */
+      position:absolute; left: calc(50% - 2.5cm); top:50%;
+      transform:translate(-50%,-50%) scale(0.98);
+      width: min(820px, 92vw);
+      max-height:min(560px, 72vh);
+      z-index:80;
+      padding:26px 28px 20px;
+      box-sizing:border-box;
+      background: rgba(20,16,10,0.78);
+      border: 1px solid rgba(197,160,89,0.55);
+      border-radius:14px;
+      box-shadow: 0 30px 90px rgba(0,0,0,0.75), 0 0 35px rgba(197,160,89,0.18);
+      backdrop-filter: blur(3px);
+      opacity:0; visibility:hidden;
+      transition: opacity .35s ease, transform .35s ease, visibility .35s;
+    }
+    .quote-card.show{ opacity:1; visibility:visible; transform:translate(-50%,-50%) scale(1); }
+
+    .q-id{ font-size:14px; letter-spacing:1px; color: rgba(255,245,224,0.85); margin-bottom:12px; }
+
+    .q-text {
+      color: var(--paper);
+      font-weight: 700;
+      font-size: 22px;
+      line-height: 1.85;
+      letter-spacing: 1px;
+      text-shadow: 2px 2px 6px rgba(0,0,0,0.85);
+      white-space: pre-wrap;
+      overflow: auto;
+      max-height: 340px;
+      padding-right: 6px;
+      text-align: justify;
+      text-justify: inter-character;
+    }
+
+    .quote-card.fade-out{
+      opacity:0;
+      transform:translate(-50%,-50%) scale(0.985);
+    }
+    .quote-card.fade-in{
+      opacity:1;
+      transform:translate(-50%,-50%) scale(1);
+    }
+
+    .q-source {
+      margin-top: 14px;
+      font-size: 14px;
+      min-height: 18px;
+      color: var(--gold);
+      text-align: right;
+      padding-right: 15px;
+    }
+
+    .actions{ margin-top:18px; display:flex; justify-content:center; gap:14px; flex-wrap:wrap; }
+    .btn{
+      padding:12px 34px;
+      font-size:16px; font-weight:700;
+      border-radius:6px;
+      border:1px solid rgba(197,160,89,0.55);
+      cursor:pointer;
+      transition: transform .12s ease, filter .12s ease;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    }
+    .btn-primary{ color:#000; background: linear-gradient(180deg, #d8b56a, #b9913d); border:none; }
+    .btn-ghost{ color: rgba(255,245,224,0.9); background: rgba(0,0,0,0.35); }
+    .btn:hover{ filter:brightness(1.05); transform: translateY(-1px); }
+    .btn:active{ transform: translateY(0px); }
+
+    .hidden{ display:none !important; }
+    /* 右侧交互：毛泽东气泡对白（A 方案） */
+    .mao-panel{
+      /* 右下角毛泽东：贴右下角（距右边界 1cm，距下边界 1cm），避免遮挡主题框 */
+      position:absolute;
+      right: 1cm;
+      bottom: 0.5cm;
+      left: auto;
+      top: auto;
+
+      z-index:85;
+      display:flex;
+      align-items:center;
+      gap:14px;
+
+      opacity:0;
+      visibility:hidden;
+      pointer-events:none;
+      transform: translateY(10px);
+      transition: opacity .65s ease, transform .65s ease, visibility 0s linear .65s;
+    }
+    .mao-panel.show{
+      opacity:1;
+      visibility:visible;
+      pointer-events:auto;
+      transform: translateY(0);
+      transition-delay: 0s;
+    }
+
+    .mao-img{
+      width: min(220px, 22vw);
+      height: min(280px, 34vh);
+      border-radius: 18px;
+      object-fit: contain;
+      object-position: center center;
+      box-shadow: 0 18px 55px rgba(0,0,0,0.55), inset 0 0 0 1px rgba(255,255,255,0.06);
+      user-select:none;
+      -webkit-user-drag:none;
+      background: rgba(0,0,0,0.00);
+      background: transparent;
+      mix-blend-mode: multiply;
+
+    }
+
+    .mao-bubble{
+      /* 气泡更宽：避免长句变成竖排；问题与“有/否”同一行（空间不足时自动换行） */
+      width: min(640px, 56vw);
+      max-width: min(640px, 56vw);
+      padding: 14px 16px 12px;
+      border-radius: 16px;
+      background: rgba(20,16,10,0.80);
+      border: 1px solid rgba(197,160,89,0.55);
+      box-shadow: 0 22px 70px rgba(0,0,0,0.55);
+      position: relative;
+
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      column-gap: 14px;
+      row-gap: 10px;
+      pointer-events: none;
+    }
+    .mao-bubble::after{
+      content:"";
+      position:absolute;
+      right:-10px;
+      bottom: 22px;
+      width: 18px;
+      height: 18px;
+      background: rgba(20,16,10,0.80);
+      border-right: 1px solid rgba(197,160,89,0.55);
+      border-bottom: 1px solid rgba(197,160,89,0.55);
+      transform: rotate(-45deg);
+    }
+    .mao-speech{
+      color: rgba(255,245,224,0.95);
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.75;
+      letter-spacing: 1px;
+      text-shadow: 0 2px 14px rgba(0,0,0,0.85);
+      white-space: pre-wrap;
+      flex: 1 1 auto;
+      min-width: 260px;
+    }
+    .mao-choices{
+      margin-top: 0;
+      display:flex;
+      gap: 10px;
+      justify-content:flex-start;
+      align-items:center;
+      flex-wrap:nowrap;
+    }
+    .mao-choice{
+      padding: 10px 18px;
+      font-size: 15px;
+      font-weight: 700;
+      border-radius: 10px;
+      cursor:pointer;
+      border: 1px solid rgba(197,160,89,0.55);
+      background: rgba(0,0,0,0.35);
+      color: rgba(255,245,224,0.92);
+      transition: transform .12s ease, filter .12s ease, opacity .12s ease;
+    }
+    .mao-choice:hover{ filter:brightness(1.06); transform: translateY(-1px); }
+    .mao-choice:active{ transform: translateY(0px); }
+    .mao-choice[disabled]{ opacity:0.45; cursor:default; transform:none; }
+
+    @media (max-width: 780px){
+      .mao-panel{
+        left: 50%;
+        right: auto;
+        bottom: 14px;
+        top: auto;
+        transform: translate(-50%,0);
+        align-items:center;
+      }
+
+      .mao-panel.show{ transform: translate(-50%,0); }
+      .mao-bubble{ max-width: min(560px, 92vw); }
+      .mao-img{ width: min(180px, 42vw); }
+      .mao-bubble::after{ right: 26px; bottom: -10px; transform: rotate(45deg); }
+    }
+
+
+
+    @media (prefers-reduced-motion: reduce){
+      .guide{ animation:none; }
+      .guide-arrow{ animation:none; }
+      .guide-text{ animation:none; }
+      .cover.play, .pages.flip .page, .white-flash.play{ animation:none !important; }
+    }
+    /* 防止气泡/卡片的伪元素盖住按钮 */
+    .quote-card::before,
+    .quote-card::after,
+    .mao-bubble::before,
+    .mao-bubble::after,
+    .mao-panel::before,
+    .mao-panel::after{
+      pointer-events: none;
+    }
+
+    .next-btn, .reset-btn, .btn{
+      position: relative;
+      z-index: 20;
+      pointer-events: auto;
+    }
+
+    .mao-bubble .mao-choices,
+    .mao-bubble button,
+    .mao-bubble .choice-btn{
+      pointer-events: auto;
+    }
+
+  </style>
+</head>
+
+<body>
+  <div class="scene">
+    <img class="bg" id="bg" src="bg.jpg" alt="background">
+    <div class="vignette"></div>
+<button class="book-hit" id="bookHit" aria-label="翻开红宝书"></button>
+
+    <button class="guide" id="guideBtn" type="button" aria-label="点击翻阅这本书">
+      <span class="guide-arrow" aria-hidden="true"></span>
+      <span class="guide-text">点击翻阅这本书</span>
+    </button>
+
+<div class="pages" id="pages" aria-hidden="true">
+      <div class="page"></div><div class="page"></div><div class="page"></div><div class="page"></div>
+      <div class="page"></div><div class="page"></div><div class="page"></div><div class="page"></div>
+    </div>
+
+    <div class="cover" id="cover" aria-hidden="true">
+      <div class="face cover-front"></div>
+      <div class="face cover-back"></div>
+    </div>
+
+    <div class="white-flash" id="whiteFlash" aria-hidden="true"></div>
+
+    <div class="quote-card" id="quoteCard" role="dialog" aria-modal="true">
+      <div class="q-id" id="qId">第 1 条</div>
+      <div class="q-text" id="qText"></div>
+      <div class="q-source" id="qSource"></div>
+      <div class="actions">
+        <button class="btn btn-primary" id="nextBtn">下一条</button>
+        <button class="btn btn-ghost" id="resetBtn">重新启示</button>
+      </div>
+    </div>
+    <div class="mao-panel" id="maoPanel" aria-hidden="true">
+      <div class="mao-bubble">
+        <div class="mao-speech" id="maoSpeech">这句话对你是否有用？</div>
+        <div class="mao-choices" id="maoChoices">
+          <button class="mao-choice" id="maoYes" type="button">有</button>
+          <button class="mao-choice" id="maoNo" type="button">否</button>
+        </div>
+      </div>
+      <img class="mao-img" id="maoImg" alt="毛泽东" />
+    </div>
+
+
+
+    <audio id="flipSound" src="卡牌翻转_爱给网_aigei_com.mp3" preload="auto"></audio>
+  </div>
+
+  <script>
+    const quotes = [
+      { id: 1, text: "谁是我们的敌人？谁是我们的朋友？这个问题是革命的首要问题。", source: "《中国社会各阶级的分析》" },
+      { id: 2, text: "革命不是请客吃饭，不是做文章，不是绘画绣花，不能那样雅致，那样从容不迫，文质彬彬，那样温良恭俭让。", source: "《湖南农民运动考察报告》" },
+      { id: 3, text: "矫枉必须过正，不过正不能矫枉。", source: "《湖南农民运动考察报告》" },
+      { id: 4, text: "不顾主客观条件，犯着革命的急性病，不愿意艰苦地做细小严密的群众工作，只想大干，充满幻想。这是盲动主义的残余。", source: "《毛泽东语录》" },
+      { id: 5, text: "星星之火，可以燎原。", source: "《星星之火，可以燎原》" },
+      { id: 6, text: "我们看事情必须要看它的实质，而把它的现象只看作入门的向导，一进了门就要抓住它的实质，这才是可靠的科学的分析方法。", source: "《星星之火，可以燎原》" },
+      { id: 7, text: "敌进我退，敌驻我扰，敌疲我打，敌退我追。", source: "《中国革命战争的战略问题》" },
+      { id: 8, text: "你对于某个问题没有调查，就停止你对于某个问题的发言权。", source: "《反对本本主义》" },
+      { id: 9, text: "调查就像“十月怀胎”，解决问题就像“一朝分娩”。调查就是解决问题。", source: "《反对本本主义》" },
+      { id: 10, text: "要把官僚主义方式这个极坏的家伙抛到粪缸里去，每一个同志喜欢的应该是群众化的方式。", source: "《毛泽东语录》" },
+      { id: 11, text: "不根据实际情况进行讨论和审查，一味盲目执行，这种单纯建立在“上级”观念上的形式主义的态度是很不对的。", source: "《反对本本主义》" },
+      { id: 12, text: "盲目的表面上完全无异议地执行上级的指示，这不是真正在执行上级的指示，这是反对上级指示或者对上级指示怠工的最妙方法。", source: "《反对本本主义》" },
+      { id: 13, text: "我们的任务是过河，但是没有桥或没有船就不能过。不解决桥或船的问题，过河就是一句空话。不解决方法问题，任务也只是瞎说一顿。", source: "《关心群众生活，注意工作方法》" },
+      { id: 14, text: "不懂得那件事的情形、性质及其关联，就不知道那件事的规律，就不能做好那件事。", source: "《中国革命战争的战略问题》" },
+      { id: 15, text: "我们固然应该尊重过去流血的经验，但是还应该尊重自己流血的经验。", source: "《中国革命战争的战略问题》" },
+      { id: 16, text: "读书是学习，使用也是学习，而且是更重要的学习。", source: "《中国革命战争的战略问题》" },
+      { id: 17, text: "聪明的拳师往往退让一步，而蠢人则其势汹汹，辟头就使出全副本领，结果却往往被退让者打倒。", source: "《中国革命战争的战略问题》" },
+      { id: 18, text: "打得赢就打，打不赢就走。", source: "《毛泽东语录》" },
+      { id: 19, text: "没有全局在胸，是不会真的投下一着好棋子的。", source: "《中国革命战争的战略问题》" },
+      { id: 20, text: "我们的战略是“以一当十”，我们的战术是“以十当一”，这是我们制胜敌人的根本法则之一。", source: "《中国革命战争的战略问题》" },
+      { id: 21, text: "对于人，伤其十指不如断其一指；对于敌，击溃其十个师不如歼灭其一个师。", source: "《中国革命战争的战略问题》" },
+      { id: 22, text: "大方向虽在一个时期中是不变更的，然而大方向内的小方向则是随时变更的。", source: "《毛泽东语录》" },
+      { id: 23, text: "如果要直接地认识某种事物，便只有亲身参加于变革现实的实践斗争中。", source: "《实践论》" },
+      { id: 24, text: "人的认识一点也不能离开实践。", source: "《实践论》" },
+      { id: 25, text: "感觉到了的东西我们不能立刻理解它，只有理解了的东西才更深刻地感觉它。", source: "《实践论》" },
+      { id: 26, text: "知识的问题是一个科学问题，来不得半点的虚伪和骄傲，需要的是诚实和谦逊的态度。", source: "《实践论》" },
+      { id: 27, text: "外因是变化的条件，内因是变化的根据，外因通过内因而起作用。", source: "《矛盾论》" },
+      { id: 28, text: "在同一性中存在着斗争性，在特殊性中存在着普遍性。", source: "《矛盾论》" },
+      { id: 29, text: "对抗是矛盾斗争的一种形式，而不是矛盾斗争的一切形式。", source: "《矛盾论》" },
+      { id: 30, text: "事情有大道理，有小道理，一切小道理都归大道理管着。", source: "《毛泽东语录》" },
+      { id: 31, text: "办法是跟着方针来的。", source: "《毛泽东语录》" },
+      { id: 32, text: "军事行动的基本原则：尽可能地保存自己的力量，消灭敌人的力量。", source: "《抗日游击战争的战略问题》" },
+      { id: 33, text: "集中大力，打敌小部。", source: "《抗日游击战争的战略问题》" },
+      { id: 34, text: "世界上只有猫和猫做朋友的事，没有猫和老鼠做朋友的事。", source: "《毛泽东语录》" },
+      { id: 35, text: "必须善于识别干部，不但要看他的一时一事，而且要看他的全部历史和全部工作。", source: "《中国共产党在民族战争中的地位》" },
+      { id: 36, text: "领导者的责任，主要地是出主意、用干部两件事。", source: "《中国共产党在民族战争中的地位》" },
+      { id: 37, text: "人不犯我，我不犯人；人若犯我，我必犯人。", source: "《论政策》" },
+      { id: 38, text: "条件多具备一分，早具备一日，胜利的把握就多一分。", source: "《论持久战》" },
+      { id: 39, text: "错觉和不意，可以丧失优势和主动。", source: "《论持久战》" },
+      { id: 40, text: "一切外国的东西，必须经过分解和吸收，取其精华，去其糟粕，决不能生吞活剥。", source: "《新民主主义论》" },
+      { id: 41, text: "只有破坏旧的腐朽的东西，才能建设新的健全的东西。", source: "《新民主主义论》" },
+      { id: 42, text: "我们的策略原则是：利用矛盾，争取多数，反对少数，各个击破。", source: "《论政策》" },
+      { id: 43, text: "领导权不是要一天到晚当作口号去高喊，也不是盛气凌人地要人家服从我们，而是以正确的政策和模范工作说服和教育人。", source: "《毛泽东语录》" },
+      { id: 44, text: "科学的态度是“实事求是”，“自以为是”和“好为人师”那样狂妄的态度是决不能解决问题的。", source: "《改造我们的学习》" },
+      { id: 45, text: "以斗争求团结则团结存，以退让求团结则团结亡。", source: "《关于正确处理人民内部矛盾的问题》" },
+      { id: 46, text: "现在我们很多同志保存着粗枝大叶、不求甚解的作风，没有真正具体的了解，真正好的领导是不会有的。", source: "《毛泽东语录》" },
+      { id: 47, text: "东张西望，道听途说，决然得不到什么完全的知识。", source: "《毛泽东语录》" },
+      { id: 48, text: "没有满腔的热忱，没有眼睛向下的决心，没有求知的渴望，没有放下臭架子、甘当小学生的精神，是一定做不好的。", source: "《“农村调查”的序言和跋》" },
+      { id: 49, text: "必须明白：群众是真正的英雄。", source: "《抗日游击战争的战略问题》" },
+      { id: 50, text: "“实事”就是客观存在着的一切事物，“是”就是客观事物的内部联系，即规律性，“求”就是我们去研究。", source: "《改造我们的学习》" },
+      { id: 51, text: "真正的理论在世界上只有一种，就是从客观实际抽出来又在客观实际中得到了证明的理论。", source: "《整顿党的作风》" },
+      { id: 52, text: "说理的首先一个方法，就是重重地给患病者一个刺激，向他们大喝一声，说：“你有病呀！”使患者为之一惊，出一身汗，然后好好地叫他们治疗。", source: "《整顿党的作风》" },
+      { id: 53, text: "凡真理都不装样子吓人，它只是老老实实地说下去和做下去。", source: "《反对党八股》" },
+      { id: 54, text: "“下车伊始”就哇喇哇喇地发议论，提意见，这也批评，那也指责，其实这种人十个有十个失败。因为这种议论没有经过周密调查。", source: "《毛泽东语录》" },
+      { id: 55, text: "我们走了很多弯路。但是错误常常是正确的向导。", source: "《关于重庆谈判》" },
+      { id: 56, text: "实际工作的同志，如果误用了他们的经验，就以自己的经验为满足，那也很危险。", source: "《整顿党的作风》" },
+      { id: 57, text: "世上决没有无缘无故的爱，也没有无缘无故的恨。", source: "《在延安文艺座谈会上的讲话》" },
+      { id: 58, text: "有些天天喊大众化的人，连三句老百姓的话都讲不来，可见他就没有下过决心跟老百姓学，其实他的意思仍是小众化。", source: "《反对党八股》" },
+      { id: 59, text: "一个人做事只凭动机，不问效果，等于一个医生只顾开药方，病人吃死了多少他是不管的。", source: "《在延安文艺座谈会上的讲话》" },
+      { id: 60, text: "普通的人，容易为过去和当前的情况所迷惑，以为今后也不过如此。他们缺乏事先看出航船将要遇到暗礁的能力。", source: "《毛泽东语录》" },
+      { id: 61, text: "我们讨论问题，应当从实际出发，不是从定义出发。", source: "《在延安文艺座谈会上的讲话》" },
+      { id: 62, text: "凡属正确的领导，必须是从群众中来，到群众中去。", source: "《关于领导方法的若干问题》" },
+      { id: 63, text: "忘记发展经济，忘记开辟财源，而企图从收缩开支去解决困难的保守观点，是不能解决问题的。", source: "《毛泽东语录》" },
+      { id: 64, text: "一切为群众的工作都要从群众的需要出发，而不是从任何良好的个人愿望出发。", source: "《毛泽东语录》" },
+      { id: 65, text: "我们应该抑制自满，时时批评自己的缺点，好像我们为了清洁，每天要洗脸，天天要扫地一样。", source: "《论联合政府》" },
+      { id: 66, text: "只要上面善于提出任务，放手让下面自力更生，问题就解决了，而且能够更加完善地解决它。", source: "《毛泽东语录》" },
+      { id: 67, text: "上级机关也不要不分轻重缓急地同时指定下级做很多项工作，以致引起下级工作步骤上的凌乱。", source: "《毛泽东语录》" },
+      { id: 68, text: "命令主义是错误的，因为它超过群众的觉悟程度，违反了群众的自愿原则，害了急性病。", source: "《毛泽东语录》" },
+      { id: 69, text: "看它的过去，就可以知道它的现在；看它的过去和现在，就可以知道它的将来。", source: "《毛泽东语录》" },
+      { id: 70, text: "从来没有不经过打扫而自动去掉的灰尘。", source: "《毛泽东语录》" },
+      { id: 71, text: "纸上的东西并不等于现实的东西。要把它变成现实的东西，还要经过很大的努力。", source: "《人的正确思想是从哪里来的？》" },
+      { id: 72, text: "困难是事实，有多少就承认多少。我们要承认困难，分析困难，向困难作斗争。世界上没有直路，要准备走曲折的路。", source: "《关于重庆谈判》" },
+      { id: 73, text: "当着天空中出现乌云的时候，我们就指出：这不过是暂时的现象，黑暗即将过去，曙光即在前头。", source: "《毛泽东语录》" },
+      { id: 74, text: "一切反动派都是纸老虎。", source: "《和美国记者安娜·路易斯·斯特朗的谈话》" },
+      { id: 75, text: "不打无准备之仗，不打无把握之仗，每战都应力求有准备，力求在敌我对比下有胜利的把握。", source: "《目前形势和我们的任务》" },
+      { id: 76, text: "群众齐心了，一切事情就好办了。马克思列宁主义的基本原则，就是使群众认识自己的利益，并团结起来奋斗。", source: "《毛泽东语录》" },
+      { id: 77, text: "我们的原则性必须是坚定的，我们也要有实现原则性的一切许可的和必需的灵活性。", source: "《毛泽东语录》" },
+      { id: 78, text: "要把问题摆到桌面上来。", source: "《党委会的工作方法》" },
+      { id: 79, text: "不懂的东西要问下级，不要轻易表示赞成或反对。先做学生，然后再做先生。", source: "《党委会的工作方法》" },
+      { id: 80, text: "丢掉幻想，准备斗争。", source: "《丢掉幻想，准备斗争》" },
+      { id: 81, text: "嗟来之食，吃下去肚子要痛的。", source: "《毛泽东语录》" },
+      { id: 82, text: "开会要事先通知，像出安民告示一样，让大家知道讨论什么问题，并早作准备。", source: "《党委会的工作方法》" },
+      { id: 83, text: "必须向一切内行的人们（不管什么人）学经济工作。恭恭敬敬地学，不懂就是不懂，不要装懂。", source: "《唯心历史观的破产》" },
+      { id: 84, text: "世间一切事物中，人是第一个可宝贵的。", source: "《唯心历史观的破产》" },
+      { id: 85, text: "我们历来不打无准备无把握之仗，也不打只有准备但无把握之仗。", source: "《毛泽东语录》" },
+      { id: 86, text: "脚本来是走路的，老是站着不动那就错了。", source: "《毛泽东语录》" },
+      { id: 87, text: "从最坏的可能性着想，总不吃亏。不论任何工作，我们都要从最坏的可能性来部署。", source: "《毛泽东语录》" },
+      { id: 88, text: "太慢了不好，太急了也不好，太慢太急都是机会主义。", source: "《毛泽东语录》" },
+      { id: 89, text: "如果有问题，就要从个别中看出普遍性。不要把所有的麻雀统统捉来解剖，才证明麻雀虽小，五脏俱全。", source: "《毛泽东语录》" },
+      { id: 90, text: "你要母鸡多生蛋，又不给它米吃；又要马儿跑得好，又要马儿不吃草。世界上哪有这样的道理！", source: "《毛泽东语录》" },
+      { id: 91, text: "道路总是曲折的，前途总是光明的。", source: "《关于重庆谈判》" },
+      { id: 92, text: "所谓团结，就是团结跟自己意见分歧的，看不起自己的，不尊重自己的，跟自己闹过别扭的那一部分人。", source: "《毛泽东语录》" },
+      { id: 93, text: "对于犯过错误的人，不仅要看他改不改，而且要帮助他改，一为看，二为帮。", source: "《毛泽东语录》" },
+      { id: 94, text: "自古以来，没有先进的东西一开始就受欢迎，它总是要挨骂。", source: "《毛泽东语录》" },
+      { id: 95, text: "历史上新的正确的东西，在开始的时候常常得不到多数人承认，只能在斗争中曲折发展。", source: "《毛泽东语录》" },
+      { id: 96, text: "只有采取讨论的方法、批评的方法、说理的方法，才能真正发展正确的意见，克服错误的意见。", source: "《关于正确处理人民内部矛盾的问题》" },
+      { id: 97, text: "我们的同志不要靠老资格吃饭，要靠解决问题正确吃饭。靠正确，不靠资格。", source: "《毛泽东文集》" },
+      { id: 98, text: "不要低估了自己方面的力量，不要夸大敌人方面的力量。", source: "《毛泽东语录》" },
+      { id: 99, text: "我们要振作精神，下苦功学习。下苦功，三个字，一个叫下，一个叫苦，一个叫功。", source: "《毛泽东语录》" },
+      { id: 100, text: "在战略上我们要藐视一切敌人，在战术上我们要重视一切敌人。", source: "《毛泽东语录》" },
+      { id: 101, text: "如果要看前途，一定要看历史。", source: "《毛泽东文集》" },
+      { id: 102, text: "一切新的东西都是从艰苦斗争中锻炼出来的。", source: "《毛泽东选集》" },
+      { id: 103, text: "习惯的力量常使人们在季节变换之交闹出毛病来，是因为在那“之交”不变换衣服。", source: "《毛泽东选集》" },
+      { id: 104, text: "腐朽的大力量要让位给新生的小力量，力量小的要变成大的，因为大多数人要求变。", source: "《毛泽东文集》" },
+      { id: 105, text: "问题就是事物的矛盾。哪里有没有解决的矛盾，哪里就有问题。", source: "《矛盾论》" },
+      { id: 106, text: "像飞机飞上天总得落在实地上，不能到处飞不落地。教条主义是不落地的，它是挂在空中的。", source: "《毛泽东文集》" },
+      { id: 107, text: "虽然理想一定要有，但是还要结合一个东西，叫做“现实”。", source: "《毛泽东文集》" },
+      { id: 108, text: "世界上的事情就是这样，要走弯路，就是Ｓ形。", source: "《建国以来毛泽东文稿》" },
+      { id: 109, text: "聪明即多问多思，老实即实事求是。持之以恒，总是能够做好事情的。", source: "《毛泽东文集》" },
+      { id: 110, text: "看起来很困难，实际上只要认真对待，并不难解决。", source: "《建国以来毛泽东文稿》" },
+      { id: 111, text: "各种经验都要吸取，不要用一个规格到处套。", source: "《毛泽东文集》" },
+      { id: 112, text: "真理不在乎是不是清一色。", source: "《建国以来毛泽东文稿》" },
+      { id: 113, text: "我们对问题要分析，不要笼统地一概否定。如果把过去一切都否定，那就是一种偏向。", source: "《毛泽东文集》" },
+      { id: 114, text: "割断历史是不行的，好像什么都是我们白手起家，这种看法是不对的。", source: "《毛泽东文集》" },
+      { id: 115, text: "一个矛盾克服了，又一个矛盾产生了。在任何时间、任何地方、任何人身上，总是有矛盾存在的。", source: "《矛盾论》" },
+      { id: 116, text: "人家讲的不是教条，我们读后变成了教条，是因为我们没有读通，不会读。", source: "《毛泽东文集》" },
+      { id: 117, text: "我们要熟悉外国的东西，读外国书，但中国人还是要以自己的东西为主。", source: "《毛泽东文集》" },
+      { id: 118, text: "错误能帮助人头脑清醒。", source: "《毛泽东文集》" },
+      { id: 119, text: "谦虚＝实际。", source: "《建国以来毛泽东文稿》" },
+      { id: 120, text: "吸收那些用得着的东西，拒绝那些用不着的东西，增加那些自己所特有的东西。", source: "《毛泽东选集》" },
+      { id: 121, text: "把别人的经验变成自己的，他的本领就大了。", source: "《毛泽东选集》" },
+      { id: 122, text: "当面不说，背后咕哝，最不好。有话不说，则相当危险。应当选择说话的时机。", source: "《反对自由主义》" },
+      { id: 123, text: "不负责任，怕负责任，不许人讲话，老虎屁股摸不得，凡是采取这种态度的人，十个就有十个要失败。", source: "《在扩大的中央工作会议上的讲话》" },
+      { id: 124, text: "凡有害的，加以限制；凡无害的，加以利用。", source: "《毛泽东文集》" },
+      { id: 125, text: "你不研究反面的东西，就驳不倒它。", source: "《毛泽东文集》" },
+      { id: 126, text: "要人家服，只能说服，不能压服。压服的结果总是压而不服。以力服人是不行的。", source: "《关于正确处理人民内部矛盾的问题》" },
+      { id: 127, text: "检讨的目的在于得出经验教训，不在于把责任加在个别同志身上，把同志放在磨子里头磨成粉没有好处。", source: "《毛泽东文集》" },
+      { id: 128, text: "注意收集不同的意见。意见一致了就不会发生不团结现象，不团结就是因为有不同的意见而又得不到解决。", source: "《毛泽东文集》" }
+    ];
+
+    const bg = document.getElementById('bg');
+    const bookHit = document.getElementById('bookHit');
+    const guideBtn = document.getElementById('guideBtn');
+    const maoPanel = document.getElementById('maoPanel');
+    const maoImg = document.getElementById('maoImg');
+    const maoSpeech = document.getElementById('maoSpeech');
+    const maoChoices = document.getElementById('maoChoices');
+    const maoYes = document.getElementById('maoYes');
+    const maoNo = document.getElementById('maoNo');
+    let maoTimer = null;
+
+    // 预加载毛泽东三张图，避免点击“有/否”时出现旧图（question）闪一下
+    ["question_nobg.png","happy_nobg.png","serious.jpg"].forEach(src=>{
+      const im = new Image();
+      im.src = src;
+    });
+    let isOpening = false;
+    const cover = document.getElementById('cover');
+    const pages = document.getElementById('pages');
+    const whiteFlash = document.getElementById('whiteFlash');
+
+    const quoteCard = document.getElementById('quoteCard');
+    const qId = document.getElementById('qId');
+    const qText = document.getElementById('qText');
+    const qSource = document.getElementById('qSource');
+
+    const nextBtn = document.getElementById('nextBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const flipSound = document.getElementById('flipSound');
+
+    const RECENT_AVOID = 6;
+    const recentQueue = [];
+
+    function playFlip(){
+      if (!flipSound) return;
+      try{ flipSound.currentTime = 0; flipSound.play().catch(()=>{}); } catch(e){}
+    }
+
+    function formatText(text){
+      let t = (text || "").trim();
+      t = t.replace(/([。；？！])/g, "$1\n");
+      const lines = t.split("\n").map(line=>{
+        if (line.length <= 26) return line;
+        let out = "", count = 0;
+        for (let i=0;i<line.length;i++){
+          out += line[i];
+          count++;
+          if (line[i] === "，" && count >= 18){
+            out += "\n";
+            count = 0;
+          }
+        }
+        return out;
+      });
+      return lines.join("\n").replace(/\n{3,}/g, "\n\n");
+    }
+
+    function pickQuote(){
+      let candidate, guard=0;
+      do{
+        candidate = quotes[Math.floor(Math.random()*quotes.length)];
+        guard++;
+        if (guard > 80) break;
+      } while (recentQueue.includes(candidate.id));
+
+      recentQueue.push(candidate.id);
+      if (recentQueue.length > RECENT_AVOID) recentQueue.shift();
+
+      qId.textContent = `第 ${candidate.id} 条`;
+      qText.textContent = formatText(candidate.text);
+      qSource.textContent = candidate.source ? `—— ${candidate.source}` : "";
+    }
+
+    function syncCoverToBg(){
+      const bgRect = bg.getBoundingClientRect();
+      const coverRect = cover.getBoundingClientRect();
+      const front = cover.querySelector('.cover-front');
+
+      front.style.backgroundImage = `url(${bg.src})`;
+      front.style.backgroundSize  = `${bgRect.width}px ${bgRect.height}px`;
+
+      const offsetX = coverRect.left - bgRect.left;
+      const offsetY = coverRect.top  - bgRect.top;
+      front.style.backgroundPosition = `-${offsetX}px -${offsetY}px`;
+    }
+
+    window.addEventListener('load', syncCoverToBg);
+    window.addEventListener('resize', syncCoverToBg);
+
+    function randPick(arr){
+      if (!arr || !arr.length) return "";
+      return arr[Math.floor(Math.random()*arr.length)];
+    }
+
+    const replyPools = {
+      yes: [
+        "孺子可教也。既然有用，就去实地降落，不要悬在空中。",
+        "好！我们要有这种‘下马看花’的求实精神。",
+        "看准了方向，就拿出‘星星之火可以燎原’的气势来。",
+        "谦虚使人进步，记住了，还要回去在实践中反复检验。",
+        "不错，这就是‘从群众中来，到群众中去’的道理。",
+        "不错！教条主义是不落地的，它是挂在空中的；你既然懂了，就要让它落在实地上。",
+        "读书是学习，使用也是学习，而且是更重要的学习。看来你已经学会如何学习了。",
+        "谦虚使人进步，记住了，我们讨论问题要从实际出发，不要从定义出发。",
+        "我们的同志不要靠老资格吃饭，要靠解决问题正确吃饭。这一关，你算是过了。",
+        "聪明即多问多思，老实即实事求是。持之以恒，总是能够做好事情的。"
+      ],
+      no: [
+        "没有调查就没有发言权。你觉得没用，说明还没进门。",
+        "感觉到了的东西我们不能立刻理解它，只有理解了的东西才能深刻地感觉它。再悟悟。",
+        "任务是过河，不解决‘桥和船’，过河就是一句空话。你还没入水，自然读不出这句真理背后的汗水。",
+        "不要怕。错误能帮助人头脑清醒，错误常常是正确的先导，再翻一页看看。",
+        "你大概是犯了急性病。不根据实际情况进行讨论，一味否定，这可是形式主义。",
+        "困难是事实，有多少就承认多少。承认它、分析它，你才能向它作斗争。",
+        "不要当‘口头革命派’。我们的任务是过河，你还没找到那条桥。",
+        "虚心使人进步，骄傲使人落后。再读一遍，读到出汗为止。",
+        "感觉到了的东西我们不能立刻理解它，只有理解了的东西才能深刻地感觉它。",
+        "不要怕犯错误。错误常常是正确的先导，关键是要研究它。"
+      ]
+    };
+
+    function setMaoState(state, speechText){
+      const imgs = {
+        question: "question_nobg.png",
+        happy: "happy_nobg.png",
+        serious: "serious.jpg"
+      };
+      if (maoImg) maoImg.src = imgs[state] || imgs.question;
+
+      if (!maoSpeech) return;
+
+      if (state === "question"){
+        maoSpeech.textContent = "这句话对你是否有用？";
+        maoChoices && maoChoices.classList.remove('hidden');
+        if (maoYes) maoYes.disabled = false;
+        if (maoNo) maoNo.disabled = false;
+      } else {
+        maoSpeech.textContent = speechText || "";
+        maoChoices && maoChoices.classList.add('hidden');
+        if (maoYes) maoYes.disabled = true;
+        if (maoNo) maoNo.disabled = true;
+      }
+    }
+
+    function hideMaoPanel(){
+      if (maoTimer) { clearTimeout(maoTimer); maoTimer = null; }
+      if (maoPanel) {
+        maoPanel.classList.remove('show');
+        maoPanel.setAttribute('aria-hidden','true');
+      }
+    }
+
+    function scheduleMaoPanel() {
+      hideMaoPanel();
+      maoTimer = setTimeout(()=>{
+        if (!maoPanel) return;
+        // 只在面板即将显示时再切到 question，避免在淡出过程中“闪回”question 图
+        setMaoState("question");
+        maoPanel.classList.add('show');
+        maoPanel.setAttribute('aria-hidden','false');
+      }, 2000);
+    }
+
+    if (maoYes) maoYes.addEventListener('click', ()=> {
+      const line = randPick(replyPools.yes);
+      setMaoState("happy", line);
+    });
+    if (maoNo) maoNo.addEventListener('click', ()=> {
+      const line = randPick(replyPools.no);
+      setMaoState("serious", line);
+    });
+
+    function openFlow(){
+      if (isOpening) return;
+      isOpening = true;
+      if (guideBtn) guideBtn.classList.add('hidden');
+      bookHit.classList.add('hidden');
+
+      syncCoverToBg();
+      playFlip();
+
+      pages.classList.add('show');
+      pages.classList.remove('flip');
+      void pages.offsetWidth;
+      pages.classList.add('flip');
+
+      cover.classList.remove('play');
+      void cover.offsetWidth;
+      cover.classList.add('play');
+
+      setTimeout(()=>{
+        whiteFlash.classList.remove('play');
+        void whiteFlash.offsetWidth;
+        whiteFlash.classList.add('play');
+      }, 900);
+
+
+      setTimeout(()=>{
+        pickQuote();
+        quoteCard.classList.add('show');
+        quoteCard.classList.add('fade-in');
+        quoteCard.classList.remove('fade-out');
+        scheduleMaoPanel();
+        
+}, 1150);
+    }
+bookHit.addEventListener('click', openFlow);
+
+    
+    if (guideBtn) guideBtn.addEventListener('click', openFlow);
+nextBtn.addEventListener('click', ()=>{
+      // 先淡出
+      quoteCard.classList.add('fade-out');
+      quoteCard.classList.remove('fade-in');
+
+      playFlip();
+      pages.classList.add('show');
+
+      pages.classList.remove('flip');
+      void pages.offsetWidth;
+      pages.classList.add('flip');
+
+      whiteFlash.classList.remove('play');
+      void whiteFlash.offsetWidth;
+      whiteFlash.classList.add('play');
+
+      // 等淡出完成（对应 0.22s）
+      setTimeout(()=>{
+        pickQuote();
+        quoteCard.classList.remove('fade-out');
+        quoteCard.classList.add('fade-in');
+        scheduleMaoPanel();
+      }, 220);
+    });
+
+
+    resetBtn.addEventListener('click', ()=>{
+      quoteCard.classList.remove('show');
+      quoteCard.classList.remove('fade-in');
+      quoteCard.classList.remove('fade-out');
+
+      isOpening = false;
+
+      // 让用户可以重新点击书/箭头
+      bookHit.classList.remove('hidden');
+      if (guideBtn) guideBtn.classList.remove('hidden');
+
+      // 关闭 Mao 面板并复位
+      hideMaoPanel();
+      setMaoState('question');
+
+      // 复位翻书层
+      pages.classList.remove('show');
+      pages.classList.remove('flip');
+      cover.classList.remove('play');
+
+      // 清空近期队列，允许重新随机
+      recentQueue.length = 0;
+    });
+
+  </script>
+</body>
+</html>
